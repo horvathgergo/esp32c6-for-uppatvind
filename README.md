@@ -68,7 +68,7 @@ Flashing procedure:
 | J4         | PinHeader_1x02_P2.54mm_Vertical    | RST                      |
 | J5         | PinHeader_1x02_P2.54mm_Vertical    | BOOT                     |
 | SW1        | Tact Push Button, 6x6mm, 5mm       | Main control button      |
-| SW2        | Unknown                            | Filter reset button      |
+| SW2        | K2-1102BG (not sure)               | Filter reset button      |
 | LED1       | OF-SMD2012B, 0805, Blue            | Control LED              |
 | LED2       | OF-SMD2012R, 0805, Red             | Filter LED               |
 | R2         | 100R, 0805                         | Control LED resistor     |
