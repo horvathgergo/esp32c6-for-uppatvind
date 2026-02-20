@@ -72,7 +72,256 @@ Flashing procedure:
 | R2         | 100R, 0805                         | Control LED resistor     |
 | R3         | 100R, 0805                         | Filter LED resistor      |
 
+Note: The filter reset LED and filter reset button are not implemented. I tested the board without them and intentionally left placeholders for their positions on the PCB for future use.
 
 
+# ESPHOME Configuration
+
+The ESP32-C6 chip is now officially supported by ESPHome, so you can use its Thread capabilities without any issues. It has been tested with ESPhome version 2026.01 using the following example.
+
+Example config:
+
+```yaml
+substitutions:
+  friendly_name: Air Purifier
+  fan_name: air_purifier
+
+esphome:
+  name: air-purifier
+  
+
+esp32:
+  board: esp32-c6-devkitc-1
+  framework:
+    type: esp-idf
+
+# Enable logging
+logger:
+
+# Enable Home Assistant API
+api:
+  encryption:
+    key: "xxxxxxxxxxx"
+
+ota:
+  - platform: esphome
+    password: "xxxxxxxxxxxxxxxxxx"
+
+#THREAD
+network:
+  enable_ipv6: true
+
+openthread:
+  tlv: "YOUR TLV"
+
+
+output:
+  - platform: ledc
+    pin: 18 
+    frequency: 150 Hz
+    id: pwm_output
+    min_power: 0.5
+    max_power: 0.5
+    zero_means_zero: true
+
+  #Main LED
+  - platform: gpio
+    pin: 23
+    id: fan_led
+
+fan:
+  - platform: speed
+    output: pwm_output
+    name: "$friendly_name"
+    id: $fan_name
+    restore_mode: RESTORE_DEFAULT_OFF
+
+    on_speed_set:
+      lambda: |-
+        int s = id($fan_name).speed;
+
+        if(s != id(fan_speed)){
+          id(fan_speed) = s;
+          id(set_fan_freq).publish_state(s);
+        }
+
+        if (s == id(speed_1)) id(current_step) = 1;
+        else if (s == id(speed_2)) id(current_step) = 2;
+        else if (s == id(speed_3)) id(current_step) = 3;
+        else id(current_step) = 0;
+
+    on_turn_on:
+      - output.turn_on: fan_led #Main LED
+      - lambda: |-
+          id(set_fan_freq).publish_state(id($fan_name).speed);
+
+    on_turn_off:
+      - output.ledc.set_frequency:
+          id: pwm_output
+          frequency: !lambda 'return int(0);'
+      - logger.log: "Fan Turned Off!"
+      - output.turn_off: fan_led #Main LED
+
+sensor:
+  - platform: pulse_meter
+    pin: 
+      number: 19
+      mode: INPUT_PULLUP
+    unit_of_measurement: 'RPM'
+    accuracy_decimals: 0
+    id: fan_tach
+    name: $friendly_name Fanspeed #HA entity
+    filters:
+      - multiply: 0.5
+      - throttle: 1s
+
+  - platform: template
+    id: set_fan_freq
+    name: "$friendly_name Fan Frequency"  #HA entity
+    filters:
+      - multiply: 3
+      - lambda: |-
+          if (id($fan_name).state){
+            if(x > 300) { // limit max frequency
+              return 300;
+              
+            } else if(x < 36 && x > 3) { // limit low frequency
+              return 36;
+              
+            } else if(x <= 3) {
+              return 0;
+              
+            } else {
+              return x;
+              
+            }
+          } else {
+            return 0;
+          }
+    on_value:
+      then:
+        - output.ledc.set_frequency:
+            id: pwm_output
+            frequency: !lambda 'return int(x);'
+        - logger.log: "on_value called"
+        
+
+binary_sensor:
+  - platform: gpio
+    id: fan_button
+    pin:
+      number: 21
+      mode: INPUT_PULLUP
+      inverted: true
+    filters:
+      - delayed_on: 30ms
+
+    on_multi_click:
+
+      # ---- LONG PUSH (>=2s) -> OFF ----
+      - timing:
+          - ON for at least 2s
+        then:
+          - lambda: |-
+              id(current_step) = 0;
+              auto call = id($fan_name).turn_off();
+              call.perform();
+
+      # ---- SHORT PUSH -> SPEED SELECT ----
+      - timing:
+          - ON for 50ms to 1s
+        then:
+          - lambda: |-
+              
+              if(!id($fan_name).state){
+                id(current_step) = 1; 
+                auto call = id($fan_name).turn_on();
+                call.set_speed(id(speed_1));
+                call.perform();
+
+                
+                id(fan_speed) = id(speed_1);
+                id(set_fan_freq).publish_state(id(speed_1));
+                return;  
+              }
+
+              
+              id(current_step)++;
+              if (id(current_step) > 3) id(current_step) = 0;
+
+              int speed_val = 0;
+              if (id(current_step) == 1) speed_val = id(speed_1);
+              if (id(current_step) == 2) speed_val = id(speed_2);
+              if (id(current_step) == 3) speed_val = id(speed_3);
+
+              if (id(current_step) == 0) {
+                auto call = id($fan_name).turn_off();
+                call.perform();
+              } else {
+                auto call = id($fan_name).turn_on();
+                call.set_speed(speed_val);
+                call.perform();
+              }
+
+              
+              id(fan_speed) = id($fan_name).speed;
+              id(set_fan_freq).publish_state(id($fan_name).speed);
+
+
+
+  - platform: template                      #Ha entity
+    name: "$friendly_name Speed 1"
+    lambda: |-
+      if (id(set_fan_freq).state >= 60 and id(set_fan_freq).state < 100 and id($fan_name).state) {
+        return true;
+      } else {
+        return false;
+      }
+      
+  - platform: template                      #Ha entity
+    name: "$friendly_name Speed 2"
+    lambda: |-
+      if (id(set_fan_freq).state >= 100 and id(set_fan_freq).state < 200 and id($fan_name).state) {
+        return true;
+      } else {
+        return false;
+      }
+
+  - platform: template                      #Ha entity
+    name: "$friendly_name Speed 3"
+    lambda: |-
+      if (id(set_fan_freq).state >= 200 and id($fan_name).state) {
+        return true;
+      } else {
+        return false;
+      }      
+
+
+
+globals:
+  - id: current_step
+    type: int
+    restore_value: yes
+    initial_value: '0'
+
+  - id: fan_speed
+    type: int
+    restore_value: yes
+    initial_value: '0'
+    
+  - id: speed_1
+    type: int
+    restore_value: yes
+    initial_value: '33'
+    
+  - id: speed_2
+    type: int
+    restore_value: yes
+    initial_value: '66'
+    
+  - id: speed_3
+    type: int
+    restore_value: yes
+    initial_value: '100'
 
 
