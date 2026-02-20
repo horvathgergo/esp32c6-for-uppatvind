@@ -25,6 +25,8 @@ The previous voltage regulator has been replaced with a better alternative. The 
 
 MCU programming: The board supports UART programming only via the TX and RX pin headers on the right side of the ESP module (there is no USB interface on the board). Therefore, a **USB-to-TTL converter is required** to upload firmware. USB-TTL converters are cheap and broadly available.
 
+On the back of the board, there is a push button and a blue indicator LED, just like on the original board. Note: The filter reset LED and filter reset button are not implemented. I tested the board without them but intentionally left placeholders for their positions on the PCB for future use.
+
 ![Image](https://github.com/user-attachments/assets/d04a9067-6acb-4a9d-ad6e-93fc652556c3)
 
 It is recommended to power the module via the VIN and GND pins during the initial setup. The board is compatible with a +5–24V supply.
@@ -65,14 +67,12 @@ Flashing procedure:
 | J3         | PinHeader_1x02_P2.54mm_Vertical    | UART                     |
 | J4         | PinHeader_1x02_P2.54mm_Vertical    | RST                      |
 | J5         | PinHeader_1x02_P2.54mm_Vertical    | BOOT                     |
-| SW1        | Tact Push Button, 6x6mm            | Main control button      |
+| SW1        | Tact Push Button, 6x6mm, 5mm       | Main control button      |
 | SW2        | Unknown                            | Filter reset button      |
 | LED1       | OF-SMD2012B, 0805, Blue            | Control LED              |
 | LED2       | OF-SMD2012R, 0805, Red             | Filter LED               |
 | R2         | 100R, 0805                         | Control LED resistor     |
 | R3         | 100R, 0805                         | Filter LED resistor      |
-
-Note: The filter reset LED and filter reset button are not implemented. I tested the board without them and intentionally left placeholders for their positions on the PCB for future use.
 
 
 # ESPHOME Configuration
